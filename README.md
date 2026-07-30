@@ -1,5 +1,7 @@
 # BBK 9588 / 9688 USB Microphone
 
+![BBK 9588 / 9688 USB microphone data path](docs/assets/readme-header.png)
+
 [![Host CI](https://github.com/HelloClyde/bbk-9588-usb-microphone/actions/workflows/host-ci.yml/badge.svg)](https://github.com/HelloClyde/bbk-9588-usb-microphone/actions/workflows/host-ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
