@@ -4,7 +4,8 @@ param(
     [string]$SdkRoot = '',
     [string]$ToolchainPrefix = '',
     [string]$OutputPath = '',
-    [string]$Title = '9588UsbMic'
+    [string]$Title = '9588UsbMic',
+    [string]$IconPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,6 +48,14 @@ if (-not $ToolchainPrefix) {
     $ToolchainPrefix = 'mipsel-none-elf-'
 }
 
+if (-not $IconPath) {
+    $IconPath = Join-Path $deviceRoot 'assets\9588-usb-mic.png'
+}
+if (-not (Test-Path -LiteralPath $IconPath)) {
+    throw "BDA icon not found: $IconPath"
+}
+$IconPath = (Resolve-Path -LiteralPath $IconPath).Path
+
 $sourcePath = Join-Path $deviceRoot 'src\main.c'
 $includePath = Join-Path $deviceRoot 'include'
 $buildArgs = @(
@@ -54,6 +63,7 @@ $buildArgs = @(
     '--prefix', $ToolchainPrefix,
     '--title', $Title,
     '--category', '9',
+    '--icon-png', $IconPath,
     '-I', $includePath,
     '-o', $outputFullPath
 )

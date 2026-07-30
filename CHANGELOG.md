@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a custom microphone, waveform, and USB menu icon to replace the
+  packer's diagnostic placeholder.
+
 ## 0.1.3 - 2026-07-30
 
 - Prepared the first standalone public source release.

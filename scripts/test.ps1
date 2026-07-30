@@ -10,6 +10,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 
 $mainPath = Join-Path $projectRoot 'device\src\main.c'
 $corePath = Join-Path $projectRoot 'device\src\usb_cdc_pcm_core.c'
+$deviceBuildPath = Join-Path $projectRoot 'device\build.ps1'
+$iconPath = Join-Path $projectRoot 'device\assets\9588-usb-mic.png'
 $hostPath = Join-Path $projectRoot 'host\src\Program.cs'
 $bridgeProject = Join-Path `
     $projectRoot `
@@ -20,6 +22,7 @@ $installerScript = Join-Path `
 
 $main = Get-Content -LiteralPath $mainPath -Raw
 $core = Get-Content -LiteralPath $corePath -Raw
+$deviceBuild = Get-Content -LiteralPath $deviceBuildPath -Raw
 $hostSource = Get-Content -LiteralPath $hostPath -Raw
 
 if ($main -notmatch '#define USB_PCM_CDC_C3_PROBE 1') {
@@ -40,6 +43,12 @@ if (
     )
 ) {
     throw 'Release BDA UI, log path, or restart warning is incomplete.'
+}
+if (
+    -not (Test-Path -LiteralPath $iconPath) -or
+    -not $deviceBuild.Contains("'--icon-png', `$IconPath")
+) {
+    throw 'Release BDA icon asset is missing from the device build.'
 }
 
 $audioStart = $core.IndexOf('static void service_audio_in(void) {')

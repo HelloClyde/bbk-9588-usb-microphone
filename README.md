@@ -39,6 +39,7 @@
 ```text
 device/
   build.ps1                  BDA 构建和校验入口
+  assets/                    菜单图标 PNG 和可复现生成脚本
   firmware_abi.h             逆向得到的当前固件 ABI 定义
   include/                   构建所需的最小公开 SDK 头
   src/main.c                 C3 profile 入口
@@ -109,7 +110,14 @@ out/9588UsbMic.bda
 .\device\build.ps1 `
   -SdkRoot C:\src\bbk9588-bda-sdk `
   -ToolchainPrefix C:\toolchains\bin\mipsel-none-elf- `
+  -IconPath C:\temp\menu-icon.png `
   -OutputPath C:\temp\9588UsbMic.bda
+```
+
+仓库已包含默认图标 PNG。修改图标生成脚本后，可使用 Pillow 重新生成：
+
+```powershell
+python .\device\assets\generate_icon.py
 ```
 
 ## 构建与运行主机端
