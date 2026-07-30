@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Install .NET SDKs
         uses: actions/setup-dotnet@v6

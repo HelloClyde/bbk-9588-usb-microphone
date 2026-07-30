@@ -2,14 +2,14 @@
 
 ## Proven target
 
-- BBK 9588 family device.
+- BBK 9588/C200 family device.
 - JZ4730 SoC.
-- C200knl-compatible firmware ABI used by the current BDA.
+- V3.30 JZ4730 payload matching the verified C200knl firmware.
 - Full-speed USB device operation.
 
-The code is tied to firmware entry points, IRQ table layout, and direct MMIO
-addresses. A successful build does not imply compatibility with another
-firmware image.
+Additional exact recovery images are implemented as static candidates. See
+`firmware-compatibility.md` for hashes and verification status. The code
+remains tied to firmware entry points, IRQ layout, and direct MMIO addresses.
 
 ## Selected JZ4730 UDC map
 
@@ -27,9 +27,24 @@ The C3 profile uses UDC base `0xB3040000`.
 This is the JZ4730 PCH-style endpoint layout established by the hardware
 probes. It is not the JZ4740 MUSB indexed-register layout.
 
+## Selected MUSB map
+
+The JZ4720/JZ4740 backend uses the indexed MUSB registers at `0xB3040000`.
+
+| Function | Endpoint/register |
+| --- | --- |
+| Control | EP0, FIFO `+0x20` |
+| CDC Bulk IN/OUT | EP1, FIFO `+0x24` |
+| CDC notification | EP2 IN, FIFO `+0x28` |
+| Indexed endpoint control | `INDEX +0x0E`, `MAXP +0x10/+0x14`, `CSR +0x12/+0x16` |
+
+The backend masks IRQ24 and polls the controller. It follows the original
+firmware's `CLKGR +0x20` and USB clock `+0x24` sequence, but leaves the High
+Speed enable clear so the 64-byte CDC Bulk descriptor remains valid.
+
 ## Runtime ownership
 
-The BDA:
+The JZ4730 BDA:
 
 1. Opens SDK audio capture and primes PCM buffers.
 2. Opens its local UI.
@@ -42,6 +57,9 @@ The BDA:
 The current code does not restart the stock Mass Storage state machine.
 Although the previous IRQ handler is restored, IRQ12 remains masked and the
 device records `reboot_required=1`.
+
+The MUSB BDA follows the same lifecycle but polls EP0/EP1, leaves IRQ24
+masked, and gates the MUSB clock after disconnect. It also requires a restart.
 
 ## Required shutdown
 

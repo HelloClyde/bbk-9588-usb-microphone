@@ -16,27 +16,36 @@ if (-not $SdkRoot) {
     $SdkRoot = $env:BBK9588_SDK_ROOT
 }
 if (-not $SdkRoot) {
-    $candidate = Split-Path -Parent $projectRoot
-    if (Test-Path -LiteralPath (Join-Path $candidate 'bda_packer')) {
+    $candidate = Join-Path $projectRoot 'sdk'
+    if (Test-Path -LiteralPath (Join-Path $candidate 'reverse\bda_compile_c.py')) {
         $SdkRoot = $candidate
     }
 }
-if ($SdkRoot) {
-    $SdkRoot = (Resolve-Path -LiteralPath $SdkRoot).Path
+if (-not $SdkRoot) {
+    throw (
+        'SDK submodule is not initialized. Run: ' +
+        'git submodule update --init --recursive'
+    )
 }
+$SdkRoot = (Resolve-Path -LiteralPath $SdkRoot).Path
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path $projectRoot 'out\9588UsbMic.bda'
 }
 $outputFullPath = [IO.Path]::GetFullPath($OutputPath)
-New-Item -ItemType Directory `
-    -Path (Split-Path -Parent $outputFullPath) `
-    -Force | Out-Null
 
 if (-not $ToolchainPrefix) {
     $ToolchainPrefix = $env:JZ4730_TOOLCHAIN_PREFIX
 }
-if (-not $ToolchainPrefix -and $SdkRoot) {
+if (-not $ToolchainPrefix) {
+    $projectPrefix = Join-Path `
+        $projectRoot `
+        '.toolchain\bin\mipsel-none-elf-'
+    if (Test-Path -LiteralPath ($projectPrefix + 'gcc.exe')) {
+        $ToolchainPrefix = $projectPrefix
+    }
+}
+if (-not $ToolchainPrefix) {
     $bundledPrefix = Join-Path `
         $SdkRoot `
         '.toolchain\bin\mipsel-none-elf-'
@@ -56,44 +65,76 @@ if (-not (Test-Path -LiteralPath $IconPath)) {
 }
 $IconPath = (Resolve-Path -LiteralPath $IconPath).Path
 
-$sourcePath = Join-Path $deviceRoot 'src\main.c'
 $includePath = Join-Path $deviceRoot 'include'
-$buildArgs = @(
-    $sourcePath,
-    '--prefix', $ToolchainPrefix,
-    '--title', $Title,
-    '--category', '9',
-    '--icon-png', $IconPath,
-    '-I', $includePath,
-    '-o', $outputFullPath
-)
+$sdkIncludePath = Join-Path $SdkRoot 'sdk\include'
+$hardwareHeader = Join-Path $sdkIncludePath 'bda_hardware.h'
+$builder = Join-Path $SdkRoot 'reverse\bda_compile_c.py'
+$validator = Join-Path $SdkRoot 'reverse\bda_validate.py'
+if (-not (Test-Path -LiteralPath $builder)) {
+    throw "BDA builder not found under SDK root: $builder"
+}
+if (-not (Test-Path -LiteralPath $hardwareHeader)) {
+    throw (
+        'SDK hardware detection API is missing. Update the submodule: ' +
+        'git submodule update --init --recursive'
+    )
+}
 
-if ($SdkRoot) {
-    $builder = Join-Path $SdkRoot 'reverse\bda_compile_c.py'
-    $validator = Join-Path $SdkRoot 'reverse\bda_validate.py'
-    if (-not (Test-Path -LiteralPath $builder)) {
-        throw "BDA builder not found under SDK root: $builder"
-    }
+function Build-Bda {
+    param(
+        [Parameter(Mandatory)]
+        [string]$SourcePath,
+        [Parameter(Mandatory)]
+        [string]$TargetPath,
+        [Parameter(Mandatory)]
+        [string]$TargetTitle
+    )
+
+    New-Item -ItemType Directory `
+        -Path (Split-Path -Parent $TargetPath) `
+        -Force | Out-Null
+    $buildArgs = @(
+        $SourcePath,
+        '--prefix', $ToolchainPrefix,
+        '--title', $TargetTitle,
+        '--category', '9',
+        '--icon-png', $IconPath,
+        '-I', $includePath,
+        '-I', $sdkIncludePath,
+        '-o', $TargetPath
+    )
+
     & python $builder @buildArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Device build failed with code $LASTEXITCODE"
     }
-    & python $validator $outputFullPath
+    & python $validator $TargetPath
     if ($LASTEXITCODE -ne 0) {
         throw "BDA validation failed with code $LASTEXITCODE"
     }
-}
-else {
-    & bda-pack @buildArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Device build failed with code $LASTEXITCODE"
-    }
-    & bda-validate $outputFullPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "BDA validation failed with code $LASTEXITCODE"
-    }
+
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $TargetPath).Hash
+    Write-Host "Built: $TargetPath"
+    Write-Host "SHA-256: $hash"
 }
 
-$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $outputFullPath).Hash
-Write-Host "Built: $outputFullPath"
-Write-Host "SHA-256: $hash"
+Build-Bda `
+    -SourcePath (Join-Path $deviceRoot 'src\main.c') `
+    -TargetPath $outputFullPath `
+    -TargetTitle $Title
+
+foreach ($obsoleteName in @(
+    '9588UsbMic-MUSB.bda',
+    'UsbCdcPcm.bda'
+)) {
+    $obsoleteOutput = [IO.Path]::GetFullPath(
+        (Join-Path $projectRoot "out\$obsoleteName")
+    )
+    if (
+        $obsoleteOutput -ne $outputFullPath -and
+        (Test-Path -LiteralPath $obsoleteOutput)
+    ) {
+        Remove-Item -LiteralPath $obsoleteOutput -Force
+        Write-Host "Removed obsolete artifact: $obsoleteOutput"
+    }
+}

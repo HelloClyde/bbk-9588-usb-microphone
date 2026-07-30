@@ -256,7 +256,7 @@
      USB_MIC_ACTIVATION_PROBE || USB_MIC_ACT10_PROBE)
 
 #if USB_MIC_P14_PROBE
-#include "bda_audio.h"
+#include "bda_firmware_audio.h"
 #endif
 #if USB_MIC_P18_PROBE
 #include "bda_graphics.h"
@@ -275,14 +275,14 @@ typedef unsigned int u32;
 
 #if USB_PCM_CDC_C3_PROBE
 #if USB_PCM_RELEASE_UI
-#define PROBE_TITLE          "9588 USB Mic"
+#define PROBE_TITLE          "BBK USB Mic"
 #define PROBE_PREFIX         "[UsbMic] "
 #define PROBE_LOG_PATH       APP_DATA_DIR "\\9588usbmic.log"
 #define PROBE_BEGIN_TEXT     "session_start"
 #define PROBE_ENTRY_TEXT     ""
 #define PROBE_CONFIRM_TEXT   ""
 #define PROBE_COMPLETE_TEXT  \
-    "USB storage is unavailable until restart. Restart the 9588 before reconnecting USB."
+    "USB storage is unavailable until restart. Restart the device before reconnecting USB."
 #define PROBE_PRODUCT_DIGIT  '3'
 #define PROBE_PID_LOW        0x56
 #define PROBE_RUN_TICKS      (4u * 60u * 60u * 40u)
@@ -1762,6 +1762,15 @@ static const u8 k_string_product_desc[] = {
     ' ', 0x00, 'P', 0x00, PROBE_PRODUCT_DIGIT, 0x00,
 #endif
 };
+#if USB_PCM_CDC_C3_PROBE
+static const u8 k_string_product_c100_desc[] = {
+    0x20, 0x03,
+    '9', 0x00, '6', 0x00, '8', 0x00, '8', 0x00,
+    ' ', 0x00, 'C', 0x00, 'D', 0x00, 'C', 0x00,
+    ' ', 0x00, 'P', 0x00, 'C', 0x00, 'M', 0x00,
+    ' ', 0x00, 'C', 0x00, '3', 0x00,
+};
+#endif
 
 static const u8 k_zero1[] = {0x00};
 static const u8 k_zero2[] = {0x00, 0x00};
@@ -1808,6 +1817,11 @@ typedef char config_desc_must_be_100[(sizeof(k_config_desc) == 100u) ? 1 : -1];
 #endif
 #if USB_PCM_TRANSPORT_PROBE
 typedef char product_desc_must_be_32[(sizeof(k_string_product_desc) == 32u) ? 1 : -1];
+#if USB_PCM_CDC_C3_PROBE
+typedef char c100_product_desc_must_be_32[
+    (sizeof(k_string_product_c100_desc) == 32u) ? 1 : -1
+];
+#endif
 #elif USB_MIC_ACT10_PROBE || USB_MIC_ACT11_PROBE || USB_MIC_ACT12_PROBE || \
     USB_MIC_ACT13_PROBE || \
     USB_MIC_ACT3_PROBE || USB_MIC_ACT4_PROBE || \
@@ -1928,6 +1942,7 @@ static u32 g_stop_audio_ne;
 #endif
 #if USB_MIC_P14_PROBE
 static bda_audio_capture_t g_capture = BDA_AUDIO_CAPTURE_INITIALIZER;
+static const bda_firmware_profile_t *g_active_profile;
 static u32 g_pcm_ring[PCM_RING_BLOCKS][PCM_BLOCK_WORDS]
     __attribute__((aligned(4)));
 static USB_IRQ_SHARED u32 g_pcm_read_slot;
@@ -3368,26 +3383,25 @@ static void log_stage(const char *stage) {
 }
 
 static int signature_ok(void) {
-    if (REG32(0x8000EF6Cu) != KNL_SIG_S_8000EF6C) return 0;
-    if (REG32(0x80005058u) != KNL_SIG_R_80005058) return 0;
-    if (REG32(0x801890E0u) != KNL_SIG_USB_INIT) return 0;
-    if (REG32(0x80004A34u) != KNL_SIG_IRQ_REG) return 0;
-#if USB_MIC_P14_PROBE
-    if (REG32(CAPTURE_READY_ADDRESS) != CAPTURE_READY_SIG0) return 0;
-    if (REG32(CAPTURE_READY_ADDRESS + 4u) != CAPTURE_READY_SIG1) return 0;
-#endif
-#if USB_MIC_P15_PROBE
-    if (REG32(KNL_USB_START_ADDRESS) != KNL_USB_START_SIG0) return 0;
-    if (REG32(KNL_USB_START_ADDRESS + 4u) != KNL_USB_START_SIG1) return 0;
-    if (REG32(KNL_USB_DISCONNECT_ADDRESS) !=
-            KNL_USB_DISCONNECT_SIG0) return 0;
-    if (REG32(KNL_USB_DISCONNECT_ADDRESS + 4u) !=
-            KNL_USB_DISCONNECT_SIG1) return 0;
-#endif
+    const volatile u32 *stop_code;
+
+    g_active_profile = bda_firmware_profile_detect();
+    if (!g_active_profile ||
+        g_active_profile->udc_kind != BDA_UDC_PCH_STYLE ||
+        g_active_profile->udc_irq != UDC_IRQ_NUMBER) {
+        return 0;
+    }
+    if (REG32(g_active_profile->usb_init) != KNL_SIG_USB_INIT) return 0;
+    if (REG32(g_active_profile->irq_register) != KNL_SIG_IRQ_REG) return 0;
+    stop_code = (const volatile u32 *)g_active_profile->capture_stop;
+    if (stop_code[0] != 0x3c03b001u ||
+        stop_code[1] != 0x34630080u) {
+        return 0;
+    }
 #if USB_MIC_INTERRUPT_TIMED_PROBE
-    if (REG32(KNL_IRQ_UNREGISTER_ADDRESS) !=
+    if (REG32(g_active_profile->irq_unregister) !=
             KNL_IRQ_UNREGISTER_SIG0) return 0;
-    if (REG32(KNL_STOCK_USB_IRQ_ADDRESS) !=
+    if (REG32(g_active_profile->stock_usb_irq) !=
             KNL_STOCK_USB_IRQ_SIG0) return 0;
 #endif
     return 1;
@@ -3396,8 +3410,10 @@ static int signature_ok(void) {
 #if USB_MIC_P14_PROBE
 static int capture_ready_now(void) {
     typedef int (*capture_ready_fn_t)(void);
-    capture_ready_fn_t ready_fn =
-        (capture_ready_fn_t)CAPTURE_READY_ADDRESS;
+    capture_ready_fn_t ready_fn;
+
+    if (!g_active_profile) return 0;
+    ready_fn = (capture_ready_fn_t)g_active_profile->capture_ready;
     return ready_fn() != 0;
 }
 
@@ -4605,6 +4621,14 @@ static int descriptor_for_request(u16 value, const u8 **data, u16 *length) {
             return 1;
         }
         if (index == 2u) {
+#if USB_PCM_CDC_C3_PROBE
+            if (g_active_profile &&
+                g_active_profile->machine == BDA_MACHINE_C100) {
+                *data = k_string_product_c100_desc;
+                *length = (u16)sizeof(k_string_product_c100_desc);
+                return 1;
+            }
+#endif
             *data = k_string_product_desc;
             *length = (u16)sizeof(k_string_product_desc);
             return 1;
@@ -5309,7 +5333,9 @@ typedef int (*act14_irq_register_fn_t)(
 typedef void (*act14_irq_unregister_fn_t)(u32 irq);
 
 static u32 act14_irq_handler_slot(void) {
-    return KNL_IRQ_VECTOR_BASE + UDC_IRQ_NUMBER * 8u;
+    if (!g_active_profile) return 0u;
+    return g_active_profile->irq_vector_base +
+        g_active_profile->udc_irq * 8u;
 }
 
 static void act14_queue_device_event(
@@ -5825,18 +5851,21 @@ static void act14_usb_irq(void *argument) {
 }
 
 static int act14_install_usb_irq(void) {
-    act14_irq_register_fn_t register_irq =
-        (act14_irq_register_fn_t)KNL_IRQ_REGISTER_ADDRESS;
-    act14_irq_unregister_fn_t unregister_irq =
-        (act14_irq_unregister_fn_t)KNL_IRQ_UNREGISTER_ADDRESS;
+    act14_irq_register_fn_t register_irq;
+    act14_irq_unregister_fn_t unregister_irq;
     u32 handler_slot = act14_irq_handler_slot();
     u32 argument_slot = handler_slot + 4u;
 
+    if (!g_active_profile || handler_slot == 0u) return 0;
+    register_irq =
+        (act14_irq_register_fn_t)g_active_profile->irq_register;
+    unregister_irq =
+        (act14_irq_unregister_fn_t)g_active_profile->irq_unregister;
     g_act14_irq_handler_before = REG32(handler_slot);
     g_act14_irq_argument_before = REG32(argument_slot);
     g_act14_device_mask_readback = REG32(USB_BASE + 0x410u);
     g_act14_endpoint_mask_readback = REG32(USB_BASE + 0x418u);
-    if (g_act14_irq_handler_before != KNL_STOCK_USB_IRQ_ADDRESS ||
+    if (g_act14_irq_handler_before != g_active_profile->stock_usb_irq ||
         g_act14_device_mask_readback != INTERRUPT_TIMED_DEVICE_MASK ||
         g_act14_endpoint_mask_readback != INTERRUPT_TIMED_EP_MASK) {
         return 0;
@@ -5866,11 +5895,13 @@ static int act14_install_usb_irq(void) {
 }
 
 static void act14_remove_usb_irq(void) {
-    act14_irq_unregister_fn_t unregister_irq =
-        (act14_irq_unregister_fn_t)KNL_IRQ_UNREGISTER_ADDRESS;
+    act14_irq_unregister_fn_t unregister_irq;
     u32 handler_slot = act14_irq_handler_slot();
     u32 argument_slot = handler_slot + 4u;
 
+    if (!g_active_profile || handler_slot == 0u) return;
+    unregister_irq =
+        (act14_irq_unregister_fn_t)g_active_profile->irq_unregister;
     REG32(INTC_MASK_SET) = IRQ12_BIT;
     if (g_act14_irq_installed != 0u) {
         unregister_irq(UDC_IRQ_NUMBER);
@@ -8016,8 +8047,7 @@ static void log_release_summary(void) {
 }
 #endif
 
-__attribute__((section(".text.bda_main")))
-int bda_main(void) {
+static int usb_cdc_pcm_pch_run(void) {
     int baseline_written;
     u32 pending;
 

@@ -6,9 +6,9 @@
 | --- | --- |
 | VID | `0xA4A5` |
 | PID | `0x0556` |
-| Product | `9588 CDC PCM C3` |
+| Product | `9588 CDC PCM C3` (C200) or `9688 CDC PCM C3` (C100) |
 | Device class | `EF/02/01` |
-| EP0 max packet | 32 bytes |
+| EP0 max packet | 32 bytes (JZ4730), 64 bytes (MUSB) |
 | Configuration bytes | 75 |
 | Interfaces | CDC control 0, CDC data 1 |
 
@@ -23,15 +23,15 @@ Windows binds the composite parent to `usbccgp` and the CDC function to
 
 ## Endpoints
 
-| Address | Type | Max packet | Purpose |
-| --- | --- | ---: | --- |
-| `0x81` | Interrupt IN | 8 | CDC notification |
-| `0x82` | Bulk IN | 64 | PCM frames |
-| `0x05` | Bulk OUT | 64 | Reserved CDC host-to-device data |
+| Backend | Notification | Bulk IN | Bulk OUT |
+| --- | --- | --- | --- |
+| JZ4730 PCH-style | `0x81`, interrupt, 8 | `0x82`, bulk, 64 | `0x05`, bulk, 64 |
+| JZ4720/JZ4740 MUSB | `0x82`, interrupt, 8 | `0x81`, bulk, 64 | `0x01`, bulk, 64 |
 
-The current host only consumes `0x82`. Baud rate is not used to pace USB Bulk
-traffic; the Windows host configures 115200/8N1 only to complete normal
-`usbser` setup.
+The host opens the Windows `usbser` COM interface and therefore does not
+depend on a fixed physical endpoint number. Baud rate is not used to pace USB
+Bulk traffic; Windows configures 115200/8N1 only to complete normal `usbser`
+setup.
 
 ## Audio format
 

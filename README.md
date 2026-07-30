@@ -1,17 +1,18 @@
-# BBK 9588 USB Microphone
+# BBK 9588 / 9688 USB Microphone
 
 [![Host CI](https://github.com/HelloClyde/bbk-9588-usb-microphone/actions/workflows/host-ci.yml/badge.svg)](https://github.com/HelloClyde/bbk-9588-usb-microphone/actions/workflows/host-ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-这是一个面向 BBK 9588/JZ4730 的实验性 USB PCM 传输项目。设备端 BDA
-直接接管 JZ4730 UDC，把 SDK 录音 PCM 通过 CDC ACM Bulk IN 发给 PC；Windows
-主机端使用系统自带的 `usbccgp`/`usbser`，保存 WAV、实时波形、PNG 和诊断日志。
+这是一个面向 BBK 9588/C200 与 9688/C100 的实验性 USB PCM 传输项目。
+设备端 BDA 识别精确固件 profile，接管 JZ4720/JZ4730/JZ4740 UDC，把 SDK
+录音 PCM 通过 CDC ACM Bulk IN 发给 PC；Windows 主机端使用系统自带的
+`usbccgp`/`usbser`，保存 WAV、实时波形、PNG 和诊断日志。
 
 项目不包含固件、NAND 镜像、原机应用或其他专有数据。
 
 > [!WARNING]
 > 当前版本不能在退出后热恢复 USB Mass Storage。退出 BDA 前必须先拔 USB，
-> 随后重启 9588；重启前不要重新连接 PC。
+> 随后重启设备；重启前不要重新连接 PC。
 
 ## 当前状态
 
@@ -29,10 +30,25 @@
 - 退出 BDA 后恢复系统 USB Mass Storage。
 - 无需重启的 UDC 热切换。
 - Linux/macOS 主机工具。
-- 其他 JZ47xx 型号或其他 9588 固件版本。
+- 新增的 9588/JZ4720、9588/JZ4740、9688/JZ4730 和 9688/JZ4740
+  profile 尚未完成各自的一次综合真机验收。
+
+固件支持状态：
+
+| 设备 / SoC | BDA | 状态 |
+| --- | --- | --- |
+| 9588/C200 JZ4730 | `9588UsbMic.bda` | 已验证的后端与相同内核 payload |
+| 9688/C100 JZ4730 | `9588UsbMic.bda` | 静态候选，待真机验收 |
+| 9588/C200 JZ4720 | `9588UsbMic.bda` | 静态候选，待真机验收 |
+| 9588/C200 JZ4740 | `9588UsbMic.bda` | 静态候选，待真机验收 |
+| 9688/C100 JZ4740 | `9588UsbMic.bda` | 静态候选，待真机验收 |
+
+精确恢复镜像 SHA-256、ABI 地址和最小测试矩阵见
+[`docs/firmware-compatibility.md`](docs/firmware-compatibility.md)。
 
 当前退出流程必须是：先拔 USB，再退出 BDA，最后重启设备。不要在退出后直接
-重新连接 PC；当前版本明确保留 IRQ12 masked，并标记 `reboot_required=1`。
+重新连接 PC；当前版本明确保留对应 UDC IRQ masked，并标记
+`restart_required=1`。
 
 ## 目录
 
@@ -41,9 +57,10 @@ device/
   build.ps1                  BDA 构建和校验入口
   assets/                    菜单图标 PNG 和可复现生成脚本
   firmware_abi.h             逆向得到的当前固件 ABI 定义
-  include/                   构建所需的最小公开 SDK 头
-  src/main.c                 C3 profile 入口
-  src/usb_cdc_pcm_core.c     设备端实现
+  include/                   多固件 ABI 适配层与界面代码
+  src/main.c                 型号/芯片检测与统一后端分发入口
+  src/usb_cdc_pcm_core.c     已验证 JZ4730 设备端实现
+  src/usb_cdc_pcm_musb.c     indexed-MUSB 设备端实现
 host/
   build.ps1                  Windows 主机工具构建入口
   capture.ps1                自动发现 COM、采集并保存诊断信息
@@ -56,7 +73,9 @@ installer/
 docs/
   protocol.md                64-byte PCM frame 和 USB descriptor
   hardware.md                JZ4730 UDC/固件假设与生命周期
+  firmware-compatibility.md  精确固件哈希、profile 和验收状态
   verified-baseline.md       真机验证边界和可追溯哈希
+sdk/                         固定提交的 bbk9588-bda-sdk submodule
 scripts/test.ps1             离线构建和静态回归检查
 ```
 
@@ -70,7 +89,7 @@ scripts/test.ps1             离线构建和静态回归检查
 
 - Windows PowerShell 5.1 或 PowerShell 7。
 - Python 3.10 或更高版本。
-- `bbk9588-bda-sdk`/`bbk9588-bda-packer`。
+- 仓库自带的 `bbk9588-bda-sdk` Git submodule。
 - `mipsel-none-elf-gcc` 和 `mipsel-none-elf-objcopy`。
 
 主机端：
@@ -82,15 +101,21 @@ scripts/test.ps1             离线构建和静态回归检查
 虚拟麦克风安装包构建还需要 .NET 10 SDK 和 Inno Setup 6.7 或更高版本。
 目标 PC 不需要预装 .NET；安装包中的桥接程序为自包含应用。
 
-本项目位于 SDK 仓库根目录下时，构建脚本会自动找到父目录中的 SDK 和
-`.toolchain`。单独检出本目录时，可以设置：
+检出源码时初始化 SDK submodule：
 
 ```powershell
-$env:BBK9588_SDK_ROOT = 'C:\path\to\bbk9588-bda-sdk'
-$env:JZ4730_TOOLCHAIN_PREFIX = 'C:\path\to\mipsel-none-elf-'
+git clone --recurse-submodules `
+  https://github.com/HelloClyde/bbk-9588-usb-microphone.git
 ```
 
-也可以安装提供 `bda-pack`/`bda-validate` 的 Python package 后直接构建。
+已有工作区执行：
+
+```powershell
+git submodule update --init --recursive
+```
+
+构建默认使用 `sdk` 中固定的 SDK 提交。`BBK9588_SDK_ROOT` 仍可用于 SDK
+开发调试，`JZ4730_TOOLCHAIN_PREFIX` 可覆盖工具链路径。
 
 ## 构建设备端
 
@@ -103,6 +128,10 @@ $env:JZ4730_TOOLCHAIN_PREFIX = 'C:\path\to\mipsel-none-elf-'
 ```text
 out/9588UsbMic.bda
 ```
+
+`9588UsbMic.bda` 先通过 SDK 检测机型与芯片，再核对精确固件代码签名，
+随后自动选择 JZ4730 PCH-style 或 JZ4720/JZ4740 MUSB 后端；任一结果不匹配
+都会在任何 UDC MMIO 前退出。
 
 可覆盖 SDK、工具链和输出位置：
 
@@ -170,13 +199,13 @@ VB-CABLE 是 Donationware，不属于本项目的 Apache-2.0 源码。开发版�
 
 ## 真机运行顺序
 
-1. 重启 9588，保持 USB 未连接。
-2. 在设备上运行 `9588UsbMic.bda`；程序会直接开始录音并显示实时波形。
+1. 重启设备，保持 USB 未连接。
+2. 运行 `9588UsbMic.bda`。程序会自动选择后端，直接开始录音并显示实时波形。
 3. 波形界面的红色指示表示设备正在采集，连接 USB 后绿色 `PC LINK`
    指示表示 PC 正在读取音频。
 4. PC 桥接程序会自动连接；需要保存独立 WAV 时可运行 `host\capture.cmd`。
 5. 点击设备上的 `STOP & EXIT`，或按 Esc，停止录音并断开 CDC。
-6. 看到重启提示后重启 9588；重启前不要重新连接 USB。
+6. 看到重启提示后重启设备；重启前不要重新连接 USB。
 7. 系统 USB/Mass Storage 只能在重启后恢复。
 
 设备端每次运行覆盖写入一份精简摘要日志：
@@ -194,8 +223,8 @@ A:\应用\数据\9588usbmic.log
 .\scripts\test.ps1
 ```
 
-该命令构建并校验 BDA、构建主机工具，并检查 CDC profile、单次 frame confirm
-以及主机端未重新引入 HID 路径。它不连接真机。
+该命令构建并校验统一 BDA、构建主机工具，并检查固件 profile、MUSB
+Full-Speed 时序、CDC frame 以及主机端未重新引入 HID 路径。它不连接真机。
 
 ## 发布打包
 

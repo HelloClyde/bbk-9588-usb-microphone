@@ -11,6 +11,7 @@ NAND images, proprietary applications, or generated build output.
 Run:
 
 ```powershell
+git submodule update --init --recursive
 .\scripts\test.ps1
 ```
 

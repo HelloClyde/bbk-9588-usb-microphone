@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Added `bbk9588-bda-sdk` as a pinned Git submodule and made local and CI
+  device builds consume its public headers and packer directly.
+- Firmware selection now requires the SDK's model/SoC result and the existing
+  exact firmware code signatures to agree before UDC MMIO.
+- Cached the successful hardware/profile result for the BDA session so the
+  SDK's OS-image scan never runs in the PCM capture hot path.
+- Added exact firmware profiles for 9588/C200 JZ4720, JZ4730, and JZ4740 plus
+  9688/C100 JZ4730 and JZ4740 recovery images.
+- Added a separate Full-Speed indexed-MUSB CDC backend for JZ4720/JZ4740,
+  preserving the existing VID/PID and 64-byte PCM wire protocol.
+- Unified the PCH-style and MUSB backends behind one hardware-gated
+  `9588UsbMic.bda`; builds and releases no longer publish a second BDA.
+- Selects 9588/C200 or 9688/C100 USB product text from the exact runtime
+  profile.
+- Uses each firmware's own capture cleanup entry and honors the `void`
+  convention of the JZ4720/JZ4740 format-taking capture initializer.
+- Kept all four newly added firmware paths marked as static candidates until
+  each completes one integrated real-device acceptance run.
+
 ## 0.1.4-rc.2 - 2026-07-30
 
 - Normalized fixed-width PE version strings before tagged CI verifies the

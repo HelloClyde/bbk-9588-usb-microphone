@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
-#ifndef BDA_AUDIO_H
-#define BDA_AUDIO_H
+#ifndef BDA_FIRMWARE_AUDIO_H
+#define BDA_FIRMWARE_AUDIO_H
 
 #include "bda_types.h"
 #include "bda/detail/runtime.h"
+#include "bda_firmware_profile.h"
 
 /* Dynamically verified raw PCM format on the kj409588/C200 firmware. */
 #define BDA_AUDIO_SAMPLE_RATE_22050 22050u
@@ -24,8 +25,8 @@
 #define BDA_AUDIO_CAPTURE_INVALID_STATE    -3
 #define BDA_AUDIO_CAPTURE_IO_ERROR         -4
 
-#define BDA_AUDIO_CAPTURE_FIRMWARE_NONE       0u
-#define BDA_AUDIO_CAPTURE_FIRMWARE_C200KNL_V1 1u
+#define BDA_AUDIO_CAPTURE_FIRMWARE_NONE       BDA_FIRMWARE_NONE
+#define BDA_AUDIO_CAPTURE_FIRMWARE_C200KNL_V1 BDA_FIRMWARE_C200_JZ4730
 
 typedef struct bda_audio_capture {
     u32 firmware;
@@ -47,51 +48,12 @@ typedef struct bda_audio_capture {
 #define BDA_AUDIO_INTERNAL_WRITE      0x078u
 #define BDA_AUDIO_INTERNAL_FINISH     0x0a0u
 
-/*
- * Firmware-private capture profile verified on BBK 9588 C200 hardware.
- * Supported C200knl.bin SHA-256:
- * dc41701442176ba81bf1b8041b2f9dac449e04f2adf6532993e7c55471de9bea
- *
- * These are not system-table ABI entries. Keep the exact address and machine
- * code checks below: another firmware must return UNSUPPORTED without calling
- * any of these functions.
- */
-#define BDA_AUDIO_INTERNAL_C200_SYS_PCM_OPEN  0x80199ad0u
-#define BDA_AUDIO_INTERNAL_C200_SYS_PCM_READY 0x8019a050u
-#define BDA_AUDIO_INTERNAL_C200_SYS_PCM_WRITE 0x80199720u
-#define BDA_AUDIO_INTERNAL_C200_CAPTURE_INIT  0x80199d4cu
-#define BDA_AUDIO_INTERNAL_C200_CAPTURE_READ  0x80199290u
-#define BDA_AUDIO_INTERNAL_C200_CAPTURE_STOP  0x80199a6cu
 #define BDA_AUDIO_INTERNAL_CAPTURE_OPEN_STATE 0x43415031u
 
 /* Return a supported firmware identifier, or FIRMWARE_NONE. */
 static inline u32 bda_audio_capture_firmware(void) {
-    void *sys = bda_sdk_internal_sys();
-    const volatile u32 *init_code;
-    const volatile u32 *read_code;
-    const volatile u32 *stop_code;
-
-    if (!sys) {
-        return BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
-    }
-    if ((u32)bda_sdk_internal_api(sys, BDA_AUDIO_INTERNAL_OPEN) !=
-            BDA_AUDIO_INTERNAL_C200_SYS_PCM_OPEN ||
-        (u32)bda_sdk_internal_api(sys, BDA_AUDIO_INTERNAL_READY) !=
-            BDA_AUDIO_INTERNAL_C200_SYS_PCM_READY ||
-        (u32)bda_sdk_internal_api(sys, BDA_AUDIO_INTERNAL_WRITE) !=
-            BDA_AUDIO_INTERNAL_C200_SYS_PCM_WRITE) {
-        return BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
-    }
-
-    init_code = (const volatile u32 *)BDA_AUDIO_INTERNAL_C200_CAPTURE_INIT;
-    read_code = (const volatile u32 *)BDA_AUDIO_INTERNAL_C200_CAPTURE_READ;
-    stop_code = (const volatile u32 *)BDA_AUDIO_INTERNAL_C200_CAPTURE_STOP;
-    if (init_code[0] != 0x27bdffe0u || init_code[1] != 0xafbf001cu ||
-        read_code[0] != 0x27bdffb8u || read_code[1] != 0xafbe0040u ||
-        stop_code[0] != 0x3c03b001u || stop_code[1] != 0x34630080u) {
-        return BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
-    }
-    return BDA_AUDIO_CAPTURE_FIRMWARE_C200KNL_V1;
+    const bda_firmware_profile_t *profile = bda_firmware_profile_detect();
+    return profile ? profile->id : BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
 }
 
 static inline int bda_audio_capture_is_supported(void) {
@@ -104,6 +66,8 @@ static inline int bda_audio_capture_is_supported(void) {
  */
 static inline int bda_audio_capture_open(bda_audio_capture_t *capture) {
     typedef int (*capture_init_fn_t)(void);
+    typedef void (*capture_init_format_fn_t)(u32, u32, u32);
+    const bda_firmware_profile_t *profile;
     capture_init_fn_t init_fn;
     u32 firmware;
     int result;
@@ -121,8 +85,23 @@ static inline int bda_audio_capture_open(bda_audio_capture_t *capture) {
         return BDA_AUDIO_CAPTURE_UNSUPPORTED;
     }
 
-    init_fn = (capture_init_fn_t)BDA_AUDIO_INTERNAL_C200_CAPTURE_INIT;
-    result = init_fn();
+    profile = bda_firmware_profile_by_id(firmware);
+    if (!profile) {
+        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
+    }
+    if (profile->capture_init_takes_format != 0u) {
+        capture_init_format_fn_t init_format_fn =
+            (capture_init_format_fn_t)profile->capture_init;
+        init_format_fn(
+            BDA_AUDIO_CAPTURE_SAMPLE_RATE_16000,
+            BDA_AUDIO_CAPTURE_BITS_16,
+            BDA_AUDIO_CAPTURE_CHANNELS_MONO
+        );
+        result = 0;
+    } else {
+        init_fn = (capture_init_fn_t)profile->capture_init;
+        result = init_fn();
+    }
     if (result != 0) {
         return BDA_AUDIO_CAPTURE_IO_ERROR;
     }
@@ -140,6 +119,7 @@ static inline int bda_audio_capture_read(
     bda_audio_capture_t *capture, void *pcm, bda_size_t bytes
 ) {
     typedef int (*capture_read_fn_t)(void *, bda_size_t);
+    const bda_firmware_profile_t *profile;
     capture_read_fn_t read_fn;
     int result;
 
@@ -147,15 +127,15 @@ static inline int bda_audio_capture_read(
         ((u32)pcm & 1u) != 0u) {
         return BDA_AUDIO_CAPTURE_INVALID_ARGUMENT;
     }
-    if (!bda_audio_capture_is_supported()) {
-        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
-    }
-    if (capture->firmware != BDA_AUDIO_CAPTURE_FIRMWARE_C200KNL_V1 ||
-        capture->state != BDA_AUDIO_INTERNAL_CAPTURE_OPEN_STATE) {
+    if (capture->state != BDA_AUDIO_INTERNAL_CAPTURE_OPEN_STATE) {
         return BDA_AUDIO_CAPTURE_INVALID_STATE;
     }
 
-    read_fn = (capture_read_fn_t)BDA_AUDIO_INTERNAL_C200_CAPTURE_READ;
+    profile = bda_firmware_profile_by_id(capture->firmware);
+    if (!profile) {
+        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
+    }
+    read_fn = (capture_read_fn_t)profile->capture_read;
     result = read_fn(pcm, bytes);
     if (result < 0 || (u32)result > bytes) {
         return BDA_AUDIO_CAPTURE_IO_ERROR;
@@ -166,25 +146,28 @@ static inline int bda_audio_capture_read(
 /* Stop a successfully opened capture. No private call occurs when unsupported. */
 static inline int bda_audio_capture_stop(bda_audio_capture_t *capture) {
     typedef void (*capture_stop_fn_t)(void);
+    const bda_firmware_profile_t *profile;
     capture_stop_fn_t stop_fn;
 
     if (!capture) {
         return BDA_AUDIO_CAPTURE_INVALID_ARGUMENT;
     }
-    if (!bda_audio_capture_is_supported()) {
-        capture->firmware = BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
-        capture->state = 0u;
-        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
-    }
-    if (capture->firmware != BDA_AUDIO_CAPTURE_FIRMWARE_C200KNL_V1 ||
-        capture->state != BDA_AUDIO_INTERNAL_CAPTURE_OPEN_STATE) {
+    if (capture->state != BDA_AUDIO_INTERNAL_CAPTURE_OPEN_STATE) {
         return BDA_AUDIO_CAPTURE_INVALID_STATE;
     }
 
-    stop_fn = (capture_stop_fn_t)BDA_AUDIO_INTERNAL_C200_CAPTURE_STOP;
+    profile = bda_firmware_profile_by_id(capture->firmware);
+    if (!profile) {
+        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
+    }
     capture->firmware = BDA_AUDIO_CAPTURE_FIRMWARE_NONE;
     capture->state = 0u;
-    stop_fn();
+    if (profile->capture_stop_kind == BDA_CAPTURE_STOP_PRIVATE) {
+        stop_fn = (capture_stop_fn_t)profile->capture_stop;
+        stop_fn();
+    } else {
+        return BDA_AUDIO_CAPTURE_UNSUPPORTED;
+    }
     return BDA_AUDIO_CAPTURE_OK;
 }
 
