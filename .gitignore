@@ -1,4 +1,5 @@
 /out/
+/.toolchain/
 /host/src/bin/
 /host/src/obj/
 /host/bridge/bin/

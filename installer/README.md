@@ -20,6 +20,10 @@ Install Inno Setup 6.7 or later, then run:
 .\installer\build.ps1
 ```
 
+Prerelease versions are also accepted, for example
+`.\installer\build.ps1 -Version 0.1.4-rc.1`. The installer display version
+retains the suffix while its Windows file version remains numeric.
+
 The output is:
 
 ```text

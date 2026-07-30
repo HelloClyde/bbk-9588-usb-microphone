@@ -36,6 +36,10 @@ if ($LASTEXITCODE -ne 0 -or $sdkList -notmatch '(?m)^10\.') {
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$') {
     throw "Invalid installer version: $Version"
 }
+$fileVersion = [regex]::Match(
+    $Version,
+    '^[0-9]+\.[0-9]+\.[0-9]+'
+).Value
 
 if (Test-Path -LiteralPath $stageDir) {
     $resolvedStage = (Resolve-Path -LiteralPath $stageDir).Path
@@ -96,6 +100,7 @@ if (-not $IsccPath -or -not (Test-Path -LiteralPath $IsccPath)) {
 
 & $IsccPath `
     "/DMyAppVersion=$Version" `
+    "/DMyFileVersion=$fileVersion" `
     "/DProjectRoot=$projectRoot" `
     "/O$outputDir" `
     $scriptPath

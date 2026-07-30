@@ -2,8 +2,15 @@
 
 ## Unreleased
 
+## 0.1.4-rc.1 - 2026-07-30
+
 - Added a custom microphone, waveform, and USB menu icon to replace the
   packer's diagnostic placeholder.
+- Added a tagged GitHub Actions release pipeline that builds the BDA and
+  versioned Windows installer on a clean runner, verifies both, and uploads
+  them with `SHA256SUMS.txt` to GitHub Releases.
+- Pinned the public BDA packer, MIPS toolchain, and official Inno Setup
+  download used by release builds.
 
 ## 0.1.3 - 2026-07-30
 

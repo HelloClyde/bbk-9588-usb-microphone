@@ -1,0 +1,156 @@
+name: Tagged Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BDA_PACKER_COMMIT: 54d0f14bd10d99691a335eb980696ef6fb09ff83
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
+jobs:
+  build-release:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^v(?<version>[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)$') {
+              throw "Unsupported release tag: $tag"
+          }
+          "RELEASE_VERSION=$($Matches.version)" >> $env:GITHUB_ENV
+          "version=$($Matches.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Install Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned BDA packer
+        shell: pwsh
+        run: |
+          python -m pip install (
+              "git+https://github.com/HelloClyde/bbk9588-bda-sdk.git@" +
+              $env:BDA_PACKER_COMMIT
+          )
+
+      - name: Cache MIPS toolchain
+        uses: actions/cache@v6
+        with:
+          path: .toolchain
+          key: mipsel-none-elf-15.2.0-8ba866e25c9826ee-full-v1
+
+      - name: Install verified MIPS toolchain
+        shell: pwsh
+        run: |
+          $prefix = & ./scripts/setup-toolchain.ps1
+          "JZ4730_TOOLCHAIN_PREFIX=$prefix" >> $env:GITHUB_ENV
+
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            6.0.x
+            10.0.x
+
+      - name: Build and verify device and host code
+        shell: pwsh
+        run: ./scripts/test.ps1
+
+      - name: Install verified Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = & ./scripts/setup-inno.ps1
+          "INNO_SETUP_PATH=$iscc" >> $env:GITHUB_ENV
+
+      - name: Build versioned Windows installer
+        shell: pwsh
+        run: |
+          ./installer/build.ps1 `
+              -Version $env:RELEASE_VERSION `
+              -IsccPath $env:INNO_SETUP_PATH
+
+      - name: Package and verify release assets
+        shell: pwsh
+        run: |
+          ./scripts/package-release.ps1 -Version $env:RELEASE_VERSION
+          $setup = Get-Item ./out/installer/9588UsbMicSetup.exe
+          if ($setup.VersionInfo.ProductVersion -ne $env:RELEASE_VERSION) {
+              throw (
+                  "Installer version mismatch: expected " +
+                  "$env:RELEASE_VERSION, got $($setup.VersionInfo.ProductVersion)"
+              )
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ github.ref_name }}
+          path: out/release/v${{ steps.version.outputs.version }}/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $repo = '${{ github.repository }}'
+          $releaseDir = "out/release/v$env:RELEASE_VERSION"
+          $assets = @(
+              "$releaseDir/9588UsbMic.bda",
+              "$releaseDir/9588UsbMicSetup.exe",
+              "$releaseDir/SHA256SUMS.txt"
+          )
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          @(
+              "# $tag",
+              "",
+              "Automated and verified GitHub Actions build.",
+              "",
+              "> [!WARNING]",
+              "> Disconnect USB before exiting the BDA, then restart the 9588.",
+              "> USB Mass Storage does not hot-restore in this version."
+          ) | Set-Content -LiteralPath $notesPath -Encoding UTF8
+
+          $nativePreference = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          gh release view $tag --repo $repo *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $PSNativeCommandUseErrorActionPreference = $nativePreference
+          if ($releaseExists) {
+              gh release upload $tag @assets --repo $repo --clobber
+          }
+          else {
+              $arguments = @(
+                  'release', 'create', $tag
+              ) + $assets + @(
+                  '--repo', $repo,
+                  '--title', $tag,
+                  '--notes-file', $notesPath
+              )
+              if ($env:RELEASE_VERSION.Contains('-')) {
+                  $arguments += '--prerelease'
+              }
+              gh @arguments
+          }
+          if ($LASTEXITCODE -ne 0) {
+              throw "GitHub Release publication failed with code $LASTEXITCODE"
+          }

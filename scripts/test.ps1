@@ -19,6 +19,9 @@ $bridgeProject = Join-Path `
 $installerScript = Join-Path `
     $projectRoot `
     'installer\9588-usb-mic.iss'
+$releaseWorkflowPath = Join-Path `
+    $projectRoot `
+    '.github\workflows\release.yml'
 
 $main = Get-Content -LiteralPath $mainPath -Raw
 $core = Get-Content -LiteralPath $corePath -Raw
@@ -105,6 +108,7 @@ $bridgeSinkText = Get-Content -LiteralPath (
     Join-Path $projectRoot 'host\bridge\VirtualCableSink.cs'
 ) -Raw
 $installerText = Get-Content -LiteralPath $installerScript -Raw
+$releaseWorkflowText = Get-Content -LiteralPath $releaseWorkflowPath -Raw
 $endpointInstallerText = Get-Content -LiteralPath (
     Join-Path $projectRoot 'host\bridge\AudioEndpointInstaller.cs'
 ) -Raw
@@ -147,6 +151,15 @@ if (
     -not $installerText.Contains('--set-default-cable-microphone')
 ) {
     throw 'Installer default audio endpoint preservation is incomplete.'
+}
+if (
+    -not $installerText.Contains('VersionInfoVersion={#MyFileVersion}') -or
+    -not $releaseWorkflowText.Contains('9588UsbMic.bda') -or
+    -not $releaseWorkflowText.Contains('9588UsbMicSetup.exe') -or
+    -not $releaseWorkflowText.Contains('SHA256SUMS.txt') -or
+    -not $releaseWorkflowText.Contains('gh release')
+) {
+    throw 'Tagged release asset publication is incomplete.'
 }
 
 if (-not $SkipDevice) {

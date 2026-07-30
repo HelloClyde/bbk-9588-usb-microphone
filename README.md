@@ -202,11 +202,23 @@ A:\应用\数据\9588usbmic.log
 完成设备端和安装器构建后运行：
 
 ```powershell
-.\scripts\package-release.ps1
+.\scripts\package-release.ps1 -Version 0.1.4-rc.1
 ```
 
-脚本会在 `out\release\v0.1.3\` 汇总 BDA、Windows 安装器和
+脚本会在对应的 `out\release\v<version>\` 目录汇总 BDA、Windows 安装器和
 `SHA256SUMS.txt`。GitHub Release 中的二进制不提交进源码历史。
+
+推送符合 `v<major>.<minor>.<patch>` 或带预发布后缀的 tag 后，Tagged Release
+工作流会在干净的 Windows runner 上重新构建所有资产。例如：
+
+```powershell
+git tag -a v0.1.4-rc.1 -m "v0.1.4-rc.1"
+git push origin v0.1.4-rc.1
+```
+
+CI 会固定并校验 BDA packer、MIPS 工具链和 Inno Setup，随后自动创建 GitHub
+Release，上传 `9588UsbMic.bda`、`9588UsbMicSetup.exe` 和
+`SHA256SUMS.txt`。带连字符后缀的版本会发布为 prerelease。
 
 ## 版本与兼容
 

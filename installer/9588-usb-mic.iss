@@ -3,6 +3,9 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.3"
 #endif
+#ifndef MyFileVersion
+  #define MyFileVersion "0.1.3"
+#endif
 #ifndef ProjectRoot
   #error ProjectRoot must be passed by installer/build.ps1
 #endif
@@ -38,7 +41,7 @@ RestartIfNeededByRun=yes
 CloseApplications=force
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion={#MyAppVersion}
+VersionInfoVersion={#MyFileVersion}
 VersionInfoDescription={#MyAppName} installer
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoCopyright=Apache-2.0 project; VB-CABLE remains copyright V. Burel
