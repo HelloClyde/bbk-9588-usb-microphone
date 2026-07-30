@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <AssemblyName>UsbCdcPcmCapture</AssemblyName>
+    <RootNamespace>UsbCdcPcmCapture</RootNamespace>
+    <VersionPrefix>0.1.3</VersionPrefix>
+    <Authors>HelloClyde</Authors>
+    <Description>Windows capture tool for the 9588 JZ4730 CDC PCM transport</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,12 @@
+/out/
+/host/src/bin/
+/host/src/obj/
+/host/bridge/bin/
+/host/bridge/obj/
+/TestResults/
+*.user
+*.suo
+*.log
+*.wav
+.idea/
+.vs/

@@ -1,0 +1,33 @@
+name: Host CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            10.0.x
+
+      - name: Run source guards
+        shell: pwsh
+        run: ./scripts/test.ps1 -SkipDevice -SkipHost
+
+      - name: Build capture utility
+        run: dotnet build host/src/UsbCdcPcmCapture.csproj --configuration Release
+
+      - name: Build virtual microphone bridge
+        run: dotnet build host/bridge/Usb9588MicBridge.csproj --configuration Release

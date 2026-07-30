@@ -1,0 +1,33 @@
+VB-CABLE THIRD-PARTY NOTICE
+===========================
+
+This installer can download and install the original, unmodified VB-CABLE
+package from:
+
+  https://vb-audio.com/Cable/index.htm
+
+VB-CABLE is copyright V. Burel and is Donationware. All participation is
+welcome. VB-CABLE is not part of the Apache-2.0 licensed 9588 USB PCM source
+code and remains governed by its own license.
+
+The downloaded October 2024 package is verified before extraction with:
+
+  SHA-256
+  B950E39F01AF1D04EA623C8F6D8EB9B6EA5C477C637295FABF20631C85116BFB
+
+VB-CABLE installation and removal require administrator access and a Windows
+restart. Windows can also show its own driver confirmation dialog.
+
+Distribution note
+-----------------
+
+VB-Audio's current website permits bundling under its Donationware conditions,
+but the package readme also says integration into another installer requires
+the author's agreement. This project therefore downloads the package directly
+from VB-Audio for development builds. Obtain written redistribution permission
+or the appropriate volume license before shipping an offline commercial
+installer that embeds the package.
+
+The 9588 USB Microphone uninstaller leaves VB-CABLE installed because it is a
+shared audio driver that may be used by other applications. It can be removed
+separately with the original VB-CABLE setup program.
