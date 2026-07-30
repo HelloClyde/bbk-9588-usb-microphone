@@ -4,6 +4,10 @@
 
 - Added `bbk9588-bda-sdk` as a pinned Git submodule and made local and CI
   device builds consume its public headers and packer directly.
+- Moved all five firmware-specific recording addresses, signature checks,
+  initializer conventions, readiness polling, and maturity metadata into the
+  SDK's public `bda_audio.h`; the application now keeps only USB transport
+  metadata.
 - Firmware selection now requires the SDK's model/SoC result and the existing
   exact firmware code signatures to agree before UDC MMIO.
 - Cached the successful hardware/profile result for the BDA session so the

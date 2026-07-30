@@ -290,23 +290,9 @@ static inline u8 bda_sys_alarm_record_enable_flag_like(const bda_sys_alarm_recor
 #define BDA_SYS_SESSION_RECORD_FLAGS_LIKE 2u
 
 /*
- * C200-family firmware-private PCM capture path. These relative offsets are
- * confirmed only in the local C200/kj409588 firmware images. On another
- * production build the open delta points inside a different function, and the
- * V2 structural fallback misidentified SYS+0x06c raw playback as capture open.
- * They are not table offsets or a public BDA ABI; callers must require an exact
- * firmware signature before calling them.
+ * Raw session descriptors remain for historical probe branches. Live PCM
+ * capture addresses and guards are provided only by the SDK bda_audio.h API.
  */
-#define BDA_C200_RECORD_OPEN_FROM_AUDIO_OPEN_DELTA_LIKE 0x02acu
-#define BDA_C200_RECORD_READY_FROM_AUDIO_READY_DELTA_LIKE 0x0038u
-#define BDA_C200_RECORD_READ_BEFORE_AUDIO_WRITE_DELTA_LIKE 0x048cu
-#define BDA_C200_RECORD_OPEN_SIGNATURE0_LIKE 0x27bdffd0u
-#define BDA_C200_RECORD_OPEN_SIGNATURE1_LIKE 0x00052e00u
-#define BDA_C200_RECORD_READY_SIGNATURE0_LIKE 0x27bdffe8u
-#define BDA_C200_RECORD_READY_SIGNATURE1_LIKE 0xafbf0014u
-#define BDA_C200_RECORD_READ_SIGNATURE0_LIKE 0x27bdffb8u
-#define BDA_C200_RECORD_READ_SIGNATURE1_LIKE 0xafbe0040u
-
 typedef void (*bda_sys_session_callback_like_t)(u32 callback_arg, u32 event_code);
 
 typedef struct bda_sys_session_desc_like {
@@ -2470,80 +2456,6 @@ static inline int bda_sys_session_status_like(
     return bda_call2(
         bda_sys_table(), BDA_SYS_SESSION_STATUS_LIKE, session_id, (u32)status
     );
-}
-
-/*
- * Resolve the firmware-private capture functions relative to public raw playback
- * table targets. C200.bin and kj409588.bin preserve both deltas; 4720knl.bin also
- * preserves the read delta. A tested BBK 9588 firmware changed the open signature
- * and shifted the read entry by four bytes, so these exact-address wrappers are
- * local-image probes only. Always check supported_like() before the first call.
- */
-static inline u32 bda_c200_record_open_address_like(void) {
-    return (u32)bda_api(bda_sys_table(), BDA_SYS_AUDIO_OPEN_LIKE) +
-        BDA_C200_RECORD_OPEN_FROM_AUDIO_OPEN_DELTA_LIKE;
-}
-
-static inline u32 bda_c200_record_read_address_like(void) {
-    return (u32)bda_api(bda_sys_table(), BDA_SYS_AUDIO_WRITE_LIKE) -
-        BDA_C200_RECORD_READ_BEFORE_AUDIO_WRITE_DELTA_LIKE;
-}
-
-static inline u32 bda_c200_record_ready_address_like(void) {
-    return (u32)bda_api(bda_sys_table(), BDA_SYS_AUDIO_READY_LIKE) +
-        BDA_C200_RECORD_READY_FROM_AUDIO_READY_DELTA_LIKE;
-}
-
-static inline int bda_c200_record_stream_supported_like(void) {
-    const volatile u32 *open_code =
-        (const volatile u32 *)bda_c200_record_open_address_like();
-    const volatile u32 *read_code =
-        (const volatile u32 *)bda_c200_record_read_address_like();
-    const volatile u32 *ready_code =
-        (const volatile u32 *)bda_c200_record_ready_address_like();
-    return open_code[0] == BDA_C200_RECORD_OPEN_SIGNATURE0_LIKE &&
-        open_code[1] == BDA_C200_RECORD_OPEN_SIGNATURE1_LIKE &&
-        ready_code[0] == BDA_C200_RECORD_READY_SIGNATURE0_LIKE &&
-        ready_code[1] == BDA_C200_RECORD_READY_SIGNATURE1_LIKE &&
-        read_code[0] == BDA_C200_RECORD_READ_SIGNATURE0_LIKE &&
-        read_code[1] == BDA_C200_RECORD_READ_SIGNATURE1_LIKE;
-}
-
-static inline void bda_c200_record_stream_open_like(
-    u32 sample_rate,
-    u32 bits_per_sample,
-    u32 channels
-) {
-    typedef void (*record_open_fn)(u32, u32, u32);
-    record_open_fn fn = (record_open_fn)bda_c200_record_open_address_like();
-    fn(sample_rate, bits_per_sample, channels);
-}
-
-static inline int bda_c200_record_stream_ready_like(void) {
-    typedef int (*record_ready_fn)(void);
-    record_ready_fn fn = (record_ready_fn)bda_c200_record_ready_address_like();
-    return fn();
-}
-
-/*
- * Blocking PCM read. The original recorder requests 0x1000 bytes per call and
- * receives mono signed 16-bit samples at 16000 Hz. On the tested hardware image,
- * the first read primes DMA when the completed queue is empty, then blocks until
- * the IRQ callback supplies a block. ready_like() only observes completed blocks
- * and must not gate the first read. Smaller reads are not verified.
- */
-static inline int bda_c200_record_stream_read_like(void *buffer, bda_size_t bytes) {
-    typedef int (*record_read_fn)(void *, bda_size_t);
-    record_read_fn fn = (record_read_fn)bda_c200_record_read_address_like();
-    return fn(buffer, bytes);
-}
-
-static inline void bda_c200_record_stream_stop_like(void) {
-    typedef void (*record_stop_fn)(void);
-    record_stop_fn fn = (record_stop_fn)bda_api(
-        bda_sys_table(), BDA_SYS_AUDIO_FLUSH_LIKE
-    );
-    fn();
 }
 
 /*

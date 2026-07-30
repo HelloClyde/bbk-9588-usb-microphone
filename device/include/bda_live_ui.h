@@ -4,7 +4,7 @@
 #define BDA_LIVE_UI_H
 
 #include "../firmware_abi.h"
-#include "bda_firmware_audio.h"
+#include "bda_audio.h"
 #include "bda_graphics.h"
 #include "bda_input.h"
 #include "bda_window.h"

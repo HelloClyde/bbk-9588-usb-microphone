@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 #include "../firmware_abi.h"
-#include "bda_firmware_audio.h"
-#include "bda_firmware_profile.h"
+#include "bda_audio.h"
+#include "bda_usb_firmware_profile.h"
 #include "bda_live_ui.h"
 
 /*
@@ -291,7 +291,7 @@ typedef char musb_c100_product_desc_must_be_32[
     sizeof(k_string_product_c100_desc) == 32u ? 1 : -1
 ];
 
-static const bda_firmware_profile_t *g_profile;
+static const bda_usb_firmware_profile_t *g_profile;
 static bda_audio_capture_t g_capture = BDA_AUDIO_CAPTURE_INITIALIZER;
 static u32 g_pcm_ring[PCM_RING_BLOCKS][PCM_BLOCK_WORDS]
     __attribute__((aligned(4)));
@@ -688,7 +688,10 @@ static int descriptor_for_request(
             return 1;
         }
         if (index == 2u) {
-            if (g_profile && g_profile->machine == BDA_MACHINE_C100) {
+            if (
+                g_profile &&
+                g_profile->device_model == BDA_DEVICE_MODEL_9688
+            ) {
                 *data = k_string_product_c100_desc;
                 *length = (u16)sizeof(k_string_product_c100_desc);
             } else {
@@ -1005,13 +1008,7 @@ static void usb_service(void) {
 }
 
 static int musb_backend_capture_ready(void) {
-    typedef int (*ready_fn_t)(void);
-    ready_fn_t ready;
-    if (!g_profile) {
-        return 0;
-    }
-    ready = (ready_fn_t)g_profile->capture_ready;
-    return ready() != 0;
+    return bda_audio_capture_ready(&g_capture) == 1;
 }
 
 static int capture_prepare(void) {
@@ -1095,7 +1092,7 @@ static void reset_counters(void) {
 }
 
 static int musb_profile_detect(void) {
-    g_profile = bda_firmware_profile_detect();
+    g_profile = bda_usb_firmware_profile_detect();
     return g_profile &&
         g_profile->udc_kind == BDA_UDC_MUSB &&
         g_profile->udc_irq == MUSB_IRQ;

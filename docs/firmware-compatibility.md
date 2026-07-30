@@ -29,12 +29,13 @@ above.
 
 ## Runtime selection
 
-The device code first uses the public SDK `bda_hardware.h` API to identify
-9588/9688 and JZ4720/JZ4730/JZ4740. It then checks several exact instructions
-at the capture init, read, ready, and stop entry points before touching any UDC
-register. Both checks must agree. The successful result is cached for the BDA
-session, so the 5 MiB OS-image scan is not repeated while capturing PCM. A
-profile also fixes the capture calling convention:
+The public SDK `bda_audio.h` implementation uses `bda_hardware.h` to identify
+9588/9688 and JZ4720/JZ4730/JZ4740, then checks exact instructions at the
+capture init, read, ready, and stop entry points. The result, including an
+unsupported result, is cached for the BDA session, so the 5 MiB OS-image scan
+is not repeated while capturing PCM. The project maps the matched SDK audio
+firmware ID to USB-only UDC and IRQ metadata before touching controller
+registers. An SDK profile also fixes the capture calling convention:
 
 | Profile | Capture init | Capture read | Capture ready | Capture stop | Init arguments |
 | --- | ---: | ---: | ---: | ---: | --- |
@@ -53,9 +54,11 @@ The MUSB stop entries are the firmware wrappers used by its own recorder
 cleanup paths. This avoids leaving the capture engine in a hand-written
 partial AIC state.
 
-The SDK is pinned as the `sdk` Git submodule. The single BDA dispatches to the
-PCH-style or MUSB backend only after model, SoC, exact firmware build, and UDC
-family agree. Unknown combinations are rejected before MMIO.
+The SDK is pinned as the `sdk` Git submodule and owns all private recording
+addresses and signature checks. The single BDA dispatches to the PCH-style or
+MUSB backend only after the SDK returns an exact audio profile and the local
+USB metadata agrees with its device model and UDC family. Unknown
+combinations are rejected before MMIO.
 
 ## Minimum acceptance matrix
 

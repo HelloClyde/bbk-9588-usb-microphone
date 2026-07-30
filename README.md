@@ -57,7 +57,7 @@ device/
   build.ps1                  BDA 构建和校验入口
   assets/                    菜单图标 PNG 和可复现生成脚本
   firmware_abi.h             逆向得到的当前固件 ABI 定义
-  include/                   多固件 ABI 适配层与界面代码
+  include/                   USB 固件元数据与界面代码
   src/main.c                 型号/芯片检测与统一后端分发入口
   src/usb_cdc_pcm_core.c     已验证 JZ4730 设备端实现
   src/usb_cdc_pcm_musb.c     indexed-MUSB 设备端实现
@@ -78,6 +78,9 @@ docs/
 sdk/                         固定提交的 bbk9588-bda-sdk submodule
 scripts/test.ps1             离线构建和静态回归检查
 ```
+
+录音 init/read/ready/stop 地址、调用约定、机器码门禁和 profile 成熟度均由
+submodule 的公开 `bda_audio.h` 提供；设备目录不再维护录音 API 副本。
 
 `device/src/usb_cdc_pcm_core.c` 目前保留了探针阶段的历史条件分支。它是可构建、
 可追溯的迁移起点，不代表最终模块划分。新的 CDC PCM 开发以本目录为准，后续

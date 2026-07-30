@@ -21,7 +21,8 @@
 
 __attribute__((section(".text.bda_main")))
 int bda_main(void) {
-    const bda_firmware_profile_t *profile = bda_firmware_profile_detect();
+    const bda_usb_firmware_profile_t *profile =
+        bda_usb_firmware_profile_detect();
 
     if (!profile) {
         bda_msgbox(

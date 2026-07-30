@@ -46,7 +46,8 @@ Speed enable clear so the 64-byte CDC Bulk descriptor remains valid.
 
 The JZ4730 BDA:
 
-1. Opens SDK audio capture and primes PCM buffers.
+1. Resolves the SDK's exact audio profile, opens capture, and primes PCM
+   buffers.
 2. Opens its local UI.
 3. Masks the stock USB IRQ path and installs the validated IRQ12 handler.
 4. Initializes and connects the JZ4730 UDC as CDC ACM.
@@ -76,7 +77,8 @@ file transfer without reboot would establish that behavior.
 
 ## Capture behavior
 
-The SDK supplies 4096-byte PCM blocks. The device keeps a two-block ring and
+The SDK supplies profile-gated 4096-byte PCM blocks and a nonblocking
+`bda_audio_capture_ready()` poll. The device keeps a two-block ring and
 sends one 32-byte PCM slice per 64-byte CDC frame. EP2 IRQ is enabled only
 when buffered PCM is available, preventing an empty-token interrupt loop.
 

@@ -256,7 +256,8 @@
      USB_MIC_ACTIVATION_PROBE || USB_MIC_ACT10_PROBE)
 
 #if USB_MIC_P14_PROBE
-#include "bda_firmware_audio.h"
+#include "bda_audio.h"
+#include "bda_usb_firmware_profile.h"
 #endif
 #if USB_MIC_P18_PROBE
 #include "bda_graphics.h"
@@ -1942,7 +1943,7 @@ static u32 g_stop_audio_ne;
 #endif
 #if USB_MIC_P14_PROBE
 static bda_audio_capture_t g_capture = BDA_AUDIO_CAPTURE_INITIALIZER;
-static const bda_firmware_profile_t *g_active_profile;
+static const bda_usb_firmware_profile_t *g_active_profile;
 static u32 g_pcm_ring[PCM_RING_BLOCKS][PCM_BLOCK_WORDS]
     __attribute__((aligned(4)));
 static USB_IRQ_SHARED u32 g_pcm_read_slot;
@@ -3383,9 +3384,7 @@ static void log_stage(const char *stage) {
 }
 
 static int signature_ok(void) {
-    const volatile u32 *stop_code;
-
-    g_active_profile = bda_firmware_profile_detect();
+    g_active_profile = bda_usb_firmware_profile_detect();
     if (!g_active_profile ||
         g_active_profile->udc_kind != BDA_UDC_PCH_STYLE ||
         g_active_profile->udc_irq != UDC_IRQ_NUMBER) {
@@ -3393,11 +3392,6 @@ static int signature_ok(void) {
     }
     if (REG32(g_active_profile->usb_init) != KNL_SIG_USB_INIT) return 0;
     if (REG32(g_active_profile->irq_register) != KNL_SIG_IRQ_REG) return 0;
-    stop_code = (const volatile u32 *)g_active_profile->capture_stop;
-    if (stop_code[0] != 0x3c03b001u ||
-        stop_code[1] != 0x34630080u) {
-        return 0;
-    }
 #if USB_MIC_INTERRUPT_TIMED_PROBE
     if (REG32(g_active_profile->irq_unregister) !=
             KNL_IRQ_UNREGISTER_SIG0) return 0;
@@ -3409,12 +3403,7 @@ static int signature_ok(void) {
 
 #if USB_MIC_P14_PROBE
 static int capture_ready_now(void) {
-    typedef int (*capture_ready_fn_t)(void);
-    capture_ready_fn_t ready_fn;
-
-    if (!g_active_profile) return 0;
-    ready_fn = (capture_ready_fn_t)g_active_profile->capture_ready;
-    return ready_fn() != 0;
+    return bda_audio_capture_ready(&g_capture) == 1;
 }
 
 static void capture_measure_preroll(void) {
@@ -4623,7 +4612,7 @@ static int descriptor_for_request(u16 value, const u8 **data, u16 *length) {
         if (index == 2u) {
 #if USB_PCM_CDC_C3_PROBE
             if (g_active_profile &&
-                g_active_profile->machine == BDA_MACHINE_C100) {
+                g_active_profile->device_model == BDA_DEVICE_MODEL_9688) {
                 *data = k_string_product_c100_desc;
                 *length = (u16)sizeof(k_string_product_c100_desc);
                 return 1;

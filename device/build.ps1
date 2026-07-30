@@ -68,14 +68,19 @@ $IconPath = (Resolve-Path -LiteralPath $IconPath).Path
 $includePath = Join-Path $deviceRoot 'include'
 $sdkIncludePath = Join-Path $SdkRoot 'sdk\include'
 $hardwareHeader = Join-Path $sdkIncludePath 'bda_hardware.h'
+$audioHeader = Join-Path $sdkIncludePath 'bda_audio.h'
 $builder = Join-Path $SdkRoot 'reverse\bda_compile_c.py'
 $validator = Join-Path $SdkRoot 'reverse\bda_validate.py'
 if (-not (Test-Path -LiteralPath $builder)) {
     throw "BDA builder not found under SDK root: $builder"
 }
-if (-not (Test-Path -LiteralPath $hardwareHeader)) {
+if (
+    -not (Test-Path -LiteralPath $hardwareHeader) -or
+    -not (Test-Path -LiteralPath $audioHeader)
+) {
     throw (
-        'SDK hardware detection API is missing. Update the submodule: ' +
+        'SDK hardware or multi-firmware audio API is missing. ' +
+        'Update the submodule: ' +
         'git submodule update --init --recursive'
     )
 }

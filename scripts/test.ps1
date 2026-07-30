@@ -13,12 +13,13 @@ $corePath = Join-Path $projectRoot 'device\src\usb_cdc_pcm_core.c'
 $musbCorePath = Join-Path `
     $projectRoot `
     'device\src\usb_cdc_pcm_musb.c'
-$profilePath = Join-Path `
+$usbProfilePath = Join-Path `
     $projectRoot `
-    'device\include\bda_firmware_profile.h'
-$audioPath = Join-Path `
+    'device\include\bda_usb_firmware_profile.h'
+$sdkAudioPath = Join-Path `
     $projectRoot `
-    'device\include\bda_firmware_audio.h'
+    'sdk\sdk\include\bda_audio.h'
+$firmwareAbiPath = Join-Path $projectRoot 'device\firmware_abi.h'
 $liveUiPath = Join-Path $projectRoot 'device\include\bda_live_ui.h'
 $deviceBuildPath = Join-Path $projectRoot 'device\build.ps1'
 $iconPath = Join-Path $projectRoot 'device\assets\9588-usb-mic.png'
@@ -46,8 +47,9 @@ $sdkHardwarePath = Join-Path `
 $main = Get-Content -LiteralPath $mainPath -Raw
 $core = Get-Content -LiteralPath $corePath -Raw
 $musbCore = Get-Content -LiteralPath $musbCorePath -Raw
-$profiles = Get-Content -LiteralPath $profilePath -Raw
-$audio = Get-Content -LiteralPath $audioPath -Raw
+$usbProfiles = Get-Content -LiteralPath $usbProfilePath -Raw
+$sdkAudio = Get-Content -LiteralPath $sdkAudioPath -Raw
+$firmwareAbi = Get-Content -LiteralPath $firmwareAbiPath -Raw
 $liveUi = Get-Content -LiteralPath $liveUiPath -Raw
 $deviceBuild = Get-Content -LiteralPath $deviceBuildPath -Raw
 $hostSource = Get-Content -LiteralPath $hostPath -Raw
@@ -105,14 +107,17 @@ if (
     throw 'The device build must publish exactly one BDA entry artifact.'
 }
 foreach ($profileName in @(
-    'BDA_FIRMWARE_C200_JZ4720',
-    'BDA_FIRMWARE_C200_JZ4730',
-    'BDA_FIRMWARE_C200_JZ4740',
-    'BDA_FIRMWARE_C100_JZ4730',
-    'BDA_FIRMWARE_C100_JZ4740'
+    'BDA_AUDIO_CAPTURE_FIRMWARE_9588_JZ4720',
+    'BDA_AUDIO_CAPTURE_FIRMWARE_9588_JZ4730',
+    'BDA_AUDIO_CAPTURE_FIRMWARE_9588_JZ4740',
+    'BDA_AUDIO_CAPTURE_FIRMWARE_9688_JZ4730',
+    'BDA_AUDIO_CAPTURE_FIRMWARE_9688_JZ4740'
 )) {
-    if (-not $profiles.Contains($profileName)) {
-        throw "Firmware profile is missing: $profileName"
+    if (
+        -not $sdkAudio.Contains($profileName) -or
+        -not $usbProfiles.Contains($profileName)
+    ) {
+        throw "SDK or USB firmware profile is missing: $profileName"
     }
 }
 foreach ($stopAddress in @(
@@ -122,31 +127,51 @@ foreach ($stopAddress in @(
     '0x801a13bcu',
     '0x801925d8u'
 )) {
-    if (-not $profiles.Contains($stopAddress)) {
-        throw "Firmware capture stop entry is missing: $stopAddress"
+    if (
+        -not $sdkAudio.Contains($stopAddress) -or
+        $usbProfiles.Contains($stopAddress)
+    ) {
+        throw (
+            'Capture stop entries must be owned only by the SDK: ' +
+            $stopAddress
+        )
     }
 }
 if (
-    -not $profiles.Contains('#include "bda_hardware.h"') -or
-    -not $profiles.Contains('bda_detect_hardware(&hardware);') -or
-    -not $profiles.Contains('BDA_DEVICE_MODEL_9588') -or
-    -not $profiles.Contains('BDA_DEVICE_MODEL_9688') -or
-    -not $profiles.Contains('hardware->chip_model == soc') -or
-    -not $profiles.Contains('static const bda_firmware_profile_t *cached_profile')
+    -not $sdkAudio.Contains('#include "bda_hardware.h"') -or
+    -not $sdkAudio.Contains('bda_detect_hardware(&hardware);') -or
+    -not $sdkAudio.Contains('BDA_DEVICE_MODEL_9588') -or
+    -not $sdkAudio.Contains('BDA_DEVICE_MODEL_9688') -or
+    -not $sdkAudio.Contains('static u32 detection_complete;') -or
+    -not $sdkAudio.Contains('bda_audio_capture_profile(void)') -or
+    -not $usbProfiles.Contains('bda_audio_capture_profile();') -or
+    -not $usbProfiles.Contains(
+        'bda_usb_firmware_profile_by_audio_firmware'
+    )
 ) {
-    throw 'Firmware profiles do not require SDK model and chip detection.'
+    throw 'SDK capture profiles or USB profile mapping are incomplete.'
 }
 if (
-    -not $audio.Contains(
+    -not $sdkAudio.Contains(
         'typedef void (*capture_init_format_fn_t)(u32, u32, u32);'
     ) -or
-    $audio.Contains('BDA_CAPTURE_STOP_AIC') -or
+    -not $sdkAudio.Contains('bda_audio_capture_ready(') -or
+    -not $sdkAudio.Contains(
+        'BDA_AUDIO_CAPTURE_SUPPORT_STATIC_CANDIDATE'
+    ) -or
+    $sdkAudio.Contains('BDA_CAPTURE_STOP_AIC') -or
     ([regex]::Matches(
-        $audio,
-        [regex]::Escape('bda_audio_capture_firmware()')
+        $core + $musbCore,
+        [regex]::Escape('bda_audio_capture_ready(&g_capture)')
     ).Count -ne 2)
 ) {
-    throw 'Capture ABI or one-time profile detection regressed.'
+    throw 'SDK capture ABI, maturity, or ready polling regressed.'
+}
+if (
+    $firmwareAbi.Contains('bda_c200_record_stream') -or
+    $firmwareAbi.Contains('BDA_C200_RECORD_OPEN_FROM_AUDIO_OPEN')
+) {
+    throw 'Legacy project-local recording wrappers must remain removed.'
 }
 if (
     -not $musbCore.Contains(
@@ -243,7 +268,9 @@ foreach ($copiedSdkHeader in @(
     'device\include\bda_graphics.h',
     'device\include\bda_input.h',
     'device\include\bda_window.h',
-    'device\include\bda\detail\runtime.h'
+    'device\include\bda\detail\runtime.h',
+    'device\include\bda_firmware_audio.h',
+    'device\include\bda_firmware_profile.h'
 )) {
     if (Test-Path -LiteralPath (Join-Path $projectRoot $copiedSdkHeader)) {
         throw "Public SDK header must come from submodule: $copiedSdkHeader"
