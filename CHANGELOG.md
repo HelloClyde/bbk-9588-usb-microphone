@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.4-rc.2 - 2026-07-30
+
+- Normalized fixed-width PE version strings before tagged CI verifies the
+  prerelease installer version.
+
 ## 0.1.4-rc.1 - 2026-07-30
 
 - Added a custom microphone, waveform, and USB menu icon to replace the

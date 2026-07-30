@@ -91,10 +91,11 @@ jobs:
         run: |
           ./scripts/package-release.ps1 -Version $env:RELEASE_VERSION
           $setup = Get-Item ./out/installer/9588UsbMicSetup.exe
-          if ($setup.VersionInfo.ProductVersion -ne $env:RELEASE_VERSION) {
+          $productVersion = $setup.VersionInfo.ProductVersion.Trim()
+          if ($productVersion -ne $env:RELEASE_VERSION) {
               throw (
                   "Installer version mismatch: expected " +
-                  "$env:RELEASE_VERSION, got $($setup.VersionInfo.ProductVersion)"
+                  "$env:RELEASE_VERSION, got $productVersion"
               )
           }
 
